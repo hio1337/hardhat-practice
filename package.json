@@ -23,8 +23,7 @@
     "typescript": "~5.8.0"
   },
   "dependencies": {
-    "@openzeppelin/contracts": "^5.4.0",
-    "save-dev": "^0.0.1-security"
+    "@openzeppelin/contracts": "^5.4.0"
   },
   "scripts": {
     "node": "hardhat node --network hardhatLocal"
