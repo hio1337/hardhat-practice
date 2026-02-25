@@ -12,7 +12,6 @@ export default defineConfig({
     hardhatNetworkHelpers,
     hardhatTypechain,
     hardhatEthers,
-    hardhatTypechain,
     hardhatMocha,
     hardhatEthersChaiMatchers,
   ],
@@ -33,7 +32,7 @@ export default defineConfig({
     },
   },
   networks: {
-    hardhat: {
+    hardhatLocal: {
       type: "edr-simulated",
       chainId: 1337,
       initialBaseFeePerGas: 0,

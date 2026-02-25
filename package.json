@@ -25,5 +25,8 @@
   "dependencies": {
     "@openzeppelin/contracts": "^5.4.0",
     "save-dev": "^0.0.1-security"
+  },
+  "scripts": {
+    "node": "hardhat node --network hardhatLocal"
   }
 }
