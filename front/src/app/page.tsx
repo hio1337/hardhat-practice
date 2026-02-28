@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, FormEvent } from "react";
 import { ethers } from "ethers";
 import { MusicShop__factory } from "@/typechain";
 import type { MusicShop } from "@/typechain";
@@ -20,12 +20,23 @@ type CurrentConnectionProps = {
   signer: ethers.JsonRpcSigner | undefined;
 };
 
+type AlbumProps = {
+  index: ethers.BigNumberish;
+  uid: string;
+  title: string;
+  price: ethers.BigNumberish;
+  quantity: ethers.BigNumberish;
+};
+
 export default function Home() {
   const [currentConnection, setCurrentConnection] =
     useState<CurrentConnectionProps>();
   const [networkError, setNetworkError] = useState<string>();
   const [txBeingSent, setTxBeingSent] = useState<string>();
+  const [currentBalance, setCurrentBalance] = useState<string>();
+  const [albums, setAlbums] = useState<AlbumProps[]>([]);
   const [transactionError, setTransactionError] = useState<any>();
+  const [isOwner, setIsOwner] = useState<boolean>(false);
   const _dismissNetworkError = () => {
     setNetworkError(undefined);
   };
@@ -64,6 +75,9 @@ export default function Home() {
     });
   };
   const _resetState = () => {
+    setCurrentBalance(undefined);
+    setIsOwner(false);
+    setAlbums([]);
     setNetworkError(undefined);
     setTransactionError(undefined);
     setTxBeingSent(undefined);
@@ -104,6 +118,152 @@ export default function Home() {
       _resetState();
     });
   };
+  const availableAlbums = () => {
+    const albumList = albums.map((album) => {
+      return (
+        <li key={album.uid}>
+          <>
+            {album.title} (#{album.index.toString()}) <br />
+            Price: {album.price.toString()}
+            <br />
+            Quantity: {album.quantity.toString()}
+            <br />
+            {BigInt(album.quantity) > BigInt(0) && (
+              <button onClick={(e) => _handleBuyAlbum(album, e)}>
+                Buy 1 copy
+              </button>
+            )}
+          </>
+        </li>
+      );
+    });
+
+    return albumList;
+  };
+  const _handleAddAlbum = async (e: React.SubmitEvent) => {
+    e.preventDefault();
+
+    if (!currentConnection?.shop) {
+      return false;
+    }
+
+    const shop = currentConnection?.shop;
+    const formData = new FormData(e.currentTarget as HTMLFormElement);
+
+    const title = formData.get("albumTitle")?.toString();
+    const price = formData.get("albumPrice")?.toString();
+    const quantity = formData.get("albumQty")?.toString();
+
+    if (title && price && quantity) {
+      const uid = ethers.solidityPackedKeccak256(["string"], [title]);
+
+      try {
+        const index = await shop.currentIndex();
+
+        const addTx = await shop.addAlbum(
+          uid,
+          title,
+          BigInt(price),
+          BigInt(quantity),
+        );
+
+        setTxBeingSent(addTx.hash);
+
+        await addTx.wait();
+
+        setAlbums((albums) => [
+          ...albums,
+          {
+            index,
+            uid,
+            title,
+            price,
+            quantity,
+          },
+        ]);
+      } catch (err) {
+        console.error(err);
+
+        setTransactionError(err);
+      } finally {
+        setTxBeingSent(undefined);
+      }
+    }
+  };
+  const _handleBuyAlbum = async (
+    album: AlbumProps,
+    e: React.MouseEvent<HTMLButtonElement>,
+  ) => {
+    e.preventDefault();
+
+    if (!currentConnection?.shop) {
+      return false;
+    }
+
+    try {
+      const buyTx = await currentConnection.shop.buy(album.index, {
+        value: album.price,
+      });
+      setTxBeingSent(buyTx.hash);
+      await buyTx.wait();
+
+      setAlbums(
+        albums.map((a) => {
+          if (a.index === album.index) {
+            album.quantity = BigInt(album.quantity) - BigInt(1);
+            return album;
+          } else {
+            return a;
+          }
+        }),
+      );
+    } catch (err) {
+      console.error(err);
+
+      setTransactionError(err);
+    } finally {
+      setTxBeingSent(undefined);
+    }
+  };
+
+  useEffect(() => {
+    (async () => {
+      if (currentConnection?.provider && currentConnection?.signer) {
+        setCurrentBalance(
+          (
+            await currentConnection.provider.getBalance(
+              currentConnection.signer.address,
+              await currentConnection.provider.getBlockNumber(),
+            )
+          ).toString(),
+        );
+      }
+    })();
+  }, [currentConnection, txBeingSent]);
+  useEffect(() => { 
+    (async () => {
+      if (currentConnection?.shop && currentConnection?.signer) {
+        const newAlbums = (await currentConnection.shop.allAlbums()).map(
+          (album) => {
+            return {
+              index: album.index,
+              uid: album.uid,
+              title: album.title,
+              price: album.price,
+              quantity: album.quantity,
+            };
+          },
+        );
+
+        setAlbums((albums) => [...albums, ...newAlbums]);
+
+        setIsOwner(
+          ethers.getAddress(await currentConnection.shop.owner()) ===
+            (await currentConnection.signer.getAddress()),
+        );
+      }
+    })();
+  }, [currentConnection]);
 
   return (
     <main>
@@ -126,6 +286,32 @@ export default function Home() {
           message={_getRpcErrorMessage(transactionError)}
           dismiss={_dismissTransactionError}
         />
+      )}
+
+      {currentBalance && (
+        <p>Your balance: {ethers.formatEther(currentBalance)} ETH</p>
+      )}
+
+      {albums.length > 0 && <ul>{availableAlbums()}</ul>}
+
+      {isOwner && !txBeingSent && (
+        <form onSubmit={_handleAddAlbum}>
+          <h2>Add album</h2>
+
+          <label>
+            Title: <input type="text" name="albumTitle" />
+          </label>
+
+          <label>
+            Price: <input type="text" name="albumPrice" />
+          </label>
+
+          <label>
+            Quantity: <input type="text" name="albumQty" />
+          </label>
+
+          <input type="submit" value="Add!" />
+        </form>
       )}
     </main>
   );
